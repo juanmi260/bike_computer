@@ -17,13 +17,13 @@
 
 
 /**********************************************************************************************************
- *                                          VARS ZONE                                                     *
+ *                                      AUX VARS ZONE                                                     *
  **********************************************************************************************************/
 // Firmaware
 #define DEBUG
 
 // BME values
-//SCL_BME A5 21(esp32)
+//SCL_BME A5 21(esp32) TODO try to use it also por GPS
 //SDA_BME A4 22(esp32)
 Adafruit_BME280 bme; // I2C
 #define SEALEVELPRESSURE_HPA (1013.25)
@@ -32,8 +32,8 @@ float temperature = 0, pressure = 0, altitude = 0, humidity = 0;
 unsigned long lastMillisBME = 0;
 
 // GPS values
-#define GPS_RX 34
-#define GPS_TX 35
+#define GPS_RX 22
+#define GPS_TX 21
 #define GPS_BAUD 9600
 #define GPS_TIMER 1000
 #define MIN_SATELLITES 5
@@ -45,6 +45,10 @@ unsigned long lastMillisGPS = 0;
 float latitude = 0, longitude = 0, speed = 0, hdop = 0;
 TinyGPSDate date;
 TinyGPSTime timegps;
+
+// Red switch vasrs (cadence sensor)
+#define CADENCE_PIN 34
+uint16_t countCadence = 0;
 
 // TFT-LCD-TouchScreen values
 MCUFRIEND_kbv tft;
@@ -85,12 +89,74 @@ boolean initStatusBar = false;
 unsigned long lastMillisLOG = 0;
 #define LOG_TIMER 1000
 
-//Accumulate vars
+/**********************************************************************************************************
+ *                                      Measured vars
+ **********************************************************************************************************/
   // Speed
+  float liveSpeed = 0;
+  float avgTripSpeed = 0;
+  float maxTripSpeed = 0;
+  float maxOverallSpeed = 0;
+    //TRIP mode speed vars
+      //Current km
+      float currentKmAvgSpeed = 0;
+      float currentKmMaxSpeed = 0;
+      //Last km
+      float lastKmAvgSpeed = 0;
+      //Best km
+      float bestKmAvgSpeed;
+    //TRACK mode speed vars
+      //Current lap
+      float currentLapAvgSpeed = 0;
+      float currentLapMaxSpeed = 0;
+      // Last lap
+      float lastLapAvgSpeed = 0;
+      // Best lap
+      float bestLapAvgSpeed = 0;
   // Distance
+  float tripDistance = 0;
+  float overaldistance = 0;
   // Cadence
-  // Altitude
+  float liveCadence = 0;
+  float avgTripCadence = 0;
+  //float maxTripCadence = 0;
+    //TRIP mode cadence vars
+      //Current km
+      int currentKmAvgCadence = 0;
+      //Last km
+      int lastKmAgvCadence = 0;
+    //TRAK mode cadence vars
+      //Current lap
+      int currentLapAvgCadence = 0;
+      // Last lap
+      int lastLapAvgCadence = 0;
+  // Elevation
+  float liveElevation = 0;
+  float tripAscentElevation = 0;
+  float overalAscentElevation = 0;
+  float tripElevationFromStart = 0;
+  //Ramp(Pendienet o desnivel)
+  float liveRamp = 0;
+  float averageTripRamp = 0;
+  // Time
+  float currentTime = 0;
+  float tripTime = 0;
+  // Temperature
+  float liveTemperature = 0;
   
+/**********************************************************************************************************
+ *                                      WORKING MODES                                                     
+ *  Here we are going to define the different working modes. Live mode will be ever working and
+ *  additionally we will be able to select one specific mode between(*):
+ *  - Trip mode -> get information for the current trip
+ *  - Track mode -> get infromation for overall trip and for every LAP (trip mode with laps)
+ *  The main difference between track mode and trip mode will be that in the prip mode la laps will be
+ *  virtual, each kilometer and in the trip mode the lap will be physical, any specific coordinates.
+ *
+ **********************************************************************************************************/  
+ bool liveMode = true;
+ bool tripMode = false;
+ bool trackMode = false;
 
 /**
  * Setup sensors and pins
@@ -106,8 +172,12 @@ void setup() {
     showSpashScreen();
 
     //Setup sensors
-    bmeSetup();
+    //bmeSetup();
     gpsSetup();
+
+    //Interruption setup for cadence sensor
+    pinMode(CADENCE_PIN, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(CADENCE_PIN), handleCadence, RISING);
     
     tft.fillScreen(BLACK);
 }
@@ -115,9 +185,9 @@ void setup() {
 
 void loop() {     
     // Read sensors data
-    readBME();
+    //readBME();
     gpsRead();
-
+    menu = 1;
     // Refresh screen UI
     switch(menu) {
       case 0: // Status screen
@@ -130,6 +200,9 @@ void loop() {
         refreshScreen();
         break;
     }
+
+    Serial.print("Cadence: ");
+    Serial.println(countCadence);
 }
 
 /**********************************************************************************************************
@@ -403,12 +476,34 @@ void refreshStatusScreen()
  */
 void refreshLiveData()
 {
+  int rows=5, margin = 5, rowHeight;
+  rowHeight = (tft.height()-32)/rows;
+  
   if (millis() - lastMillisTFT >= TFT_TIMER) {
+    drawStatusBar(); // It will fill 32 px in the screen top
     lastMillisTFT = millis();
     //Init live data UI only once
     if (!initLiveDataUI) {
       initLiveDataUI = true;
-      showmsgXYVCenter(0, 19, 1, &FreeSans12pt7b, "TIME");
+      int y = 0;
+      Serial.println(tft.height());
+      int i=0;
+      for (y=32; y<=tft.height();y+=rowHeight) {
+        tft.drawFastHLine(0, y, tft.width(), WHITE);
+        Serial.print("drawRow: ");
+        Serial.println(y);
+        switch(i) {
+          case 0: //Speed
+            showmsgXYVCenter(0, y+margin+9, 1, &FreeSans9pt7b, SPEED);
+            break;
+          case 1:
+            showmsgXYVCenter(0, y+margin+9, 1, &FreeSans9pt7b, ACTIVITY_TIME);
+            break;
+        }
+        i++;
+      }
+      
+      /*showmsgXYVCenter(0, 19, 1, &FreeSans12pt7b, "TIME");
       tft.drawFastHLine(0, 96, tft.width(), WHITE);
       showmsgXYVCenterWidth(220, 98, 1, &FreeSans12pt7b, "AVG", 100);
       tft.drawFastVLine(220, 96, 96, WHITE);
@@ -425,11 +520,18 @@ void refreshLiveData()
       showmsgXYVCenter(0, 309, 1, &FreeSans12pt7b, "ACTIVITY TIME");
       
       tft.drawFastHLine(0, 384, tft.width(), WHITE);
-      showmsgXYVCenter(0, 405, 1, &FreeSans12pt7b, "CAL");
+      showmsgXYVCenter(0, 405, 1, &FreeSans12pt7b, "CAL");*/
     }
 
+    
+    //Refresh speed (row 0)
+    char buffer[10], spBf[10];
+    sprintf(buffer, "%s km/h", dtostrf(speed, 3, 2, spBf));
+    tft.fillRect(0,32+rowHeight*1-30,tft.width(), 30, BLACK);
+    showmsgXYVCenter(0, 32+rowHeight*1-margin, 2, &FreeSmallFont, buffer, WHITE, BLACK);
+    
     //Refresh Time
-    char buffer[32], oldBuffer[32]={};
+    /*char buffer[32], oldBuffer[32]={};
     
     sprintf(buffer, "%02d:%02d:%02d ", timegps.hour(), timegps.minute(), timegps.second());
     showmsgXYVCenter(0, 87, 1, &FreeBigFont, buffer);
@@ -444,7 +546,7 @@ void refreshLiveData()
 
     delay(2000);
     sprintf(buffer, "%02d:%02d:%02d ", timegps.hour(), timegps.minute(), timegps.second()+1);
-    showmsgXYVCenter(0, 87, 1, &FreeBigFont, buffer);
+    showmsgXYVCenter(0, 87, 1, &FreeBigFont, buffer);*/
   }
 }
 
@@ -519,13 +621,16 @@ void drawGps(int x, int y, int satellites, uint16_t bColor)
   tft.print(buffer);
 }
 
-void drawTime(uint16_t bColor)
+/**
+ * Draw time and temperature in status bar
+ */
+void drawTimeAndTemperature(uint16_t bColor)
 {
-  char buffer[6];
-  sprintf(buffer, "%02d:%02d ", timegps.hour(), timegps.minute());
+  char buffer[20], tmpBuffer[10];
+  sprintf(buffer, "%sC %02d:%02d ",dtostrf(temperature, 3, 1, tmpBuffer), timegps.hour(), timegps.minute());
   int16_t x=0, y=0, x1, y1;
-    uint16_t w, h;
-    //tft.drawFastHLine(0, y, tft.width(), RED);
+  uint16_t w, h;
+  
   tft.getTextBounds(buffer, x, y, &x1, &y1, &w, &h);
   tft.setFont();
   tft.setCursor(tft.width()-w, 5+3);
@@ -544,7 +649,23 @@ void drawStatusBar()
     initStatusBar = !initStatusBar;
     tft.fillRect(0,0, tft.width(), 32, statusBarColor);
   }
-  drawBattery(5, 4, 100, false, statusBarColor);
-  drawGps(120, 4, satellites, statusBarColor);
-  drawTime(statusBarColor);
+  drawBattery(5, 3, 100, false, statusBarColor);
+  drawGps(105, 5, satellites, statusBarColor);
+  drawTimeAndTemperature(statusBarColor);
+}
+
+/**********************************************************************************************************
+ *                                       Measurement functions                                            *
+ **********************************************************************************************************/
+/**
+ * Set speed vars takeing into account the trip mode
+ */
+void setSpeed()
+{
+  
+}
+
+void handleCadence()
+{
+   countCadence++;
 }

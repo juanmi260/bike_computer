@@ -14,3 +14,8 @@
 #define TFT_D5   16
 #define TFT_D6   27
 #define TFT_D7   14
+
+//Languaje
+//EN
+#define SPEED "SPEED"
+#define ACTIVITY_TIME "ACTIVITY TIME"
