@@ -13,8 +13,7 @@
 #include "Fonts/FreeSans12pt7b.h"
 #include "Fonts/FreeSans18pt7b.h"
 #include "Fonts/FreeSerif12pt7b.h"
-#include "SevenSegmenstClassic20p.h"
-
+#include "Orbitron_Medium_50.h"
 
 /**********************************************************************************************************
  *                                      AUX VARS ZONE                                                     *
@@ -191,7 +190,6 @@ void loop() {
     // Refresh screen UI
     switch(menu) {
       case 0: // Status screen
-        refreshStatusScreen();
         break;
       case 1: // Live data
         refreshLiveData();
@@ -382,7 +380,7 @@ void logParameters()
 /**
  * Print message in LCD
  */
-void showmsgXY(int x, int y, int sz, const GFXfont *f, const char *msg, uint16_t fColor=WHITE, uint16_t bColor=BLACK)
+void showmsgXY(int x, int y, int sz, const GFXfont *f, const char *msg, uint16_t fColor=GREEN, uint16_t bColor=WHITE)
 {
     int16_t x1, y1;
     uint16_t wid, ht;
@@ -398,14 +396,17 @@ void showmsgXY(int x, int y, int sz, const GFXfont *f, const char *msg, uint16_t
 /**
  * Print message in LCD
  */
-void showmsgXYVCenter(int x, int y, int sz, const GFXfont *f, const char *msg, uint16_t fColor=WHITE, uint16_t bColor=BLACK)
+void showmsgXYVCenter(int x, int y, int sz, const GFXfont *f, const char *msg, uint16_t fColor=GREEN, uint16_t bColor=WHITE)
 {
     int16_t x1, y1;
     uint16_t w, h;
     //tft.drawFastHLine(0, y, tft.width(), RED);
+    tft.setFont(f);
     tft.getTextBounds(msg, x, y, &x1, &y1, &w, &h);
+    
     x = (tft.width()-w)/2;
     tft.setTextColor(fColor, bColor);
+    tft.fillRect(x,y,y1,x1, BLUE);
     //center
     showmsgXY(x, y, sz, f, msg, fColor, bColor);
 }
@@ -481,7 +482,7 @@ void refreshLiveData()
   
   if (millis() - lastMillisTFT >= TFT_TIMER) {
     drawStatusBar(); // It will fill 32 px in the screen top
-    lastMillisTFT = millis();
+    
     //Init live data UI only once
     if (!initLiveDataUI) {
       initLiveDataUI = true;
@@ -498,6 +499,9 @@ void refreshLiveData()
             break;
           case 1:
             showmsgXYVCenter(0, y+margin+9, 1, &FreeSans9pt7b, ACTIVITY_TIME);
+            break;
+          case 2:
+            showmsgXYVCenter(0, y+margin+9, 1, &FreeSans9pt7b, CADENCE);
             break;
         }
         i++;
@@ -526,13 +530,33 @@ void refreshLiveData()
     
     //Refresh speed (row 0)
     char buffer[10], spBf[10];
-    sprintf(buffer, "%s km/h", dtostrf(speed, 3, 2, spBf));
-    tft.fillRect(0,32+rowHeight*1-30,tft.width(), 30, BLACK);
-    showmsgXYVCenter(0, 32+rowHeight*1-margin, 2, &FreeSmallFont, buffer, WHITE, BLACK);
+    tft.fillRect(0,32+rowHeight*1-60,tft.width(), 60, BLACK);
+    //tft.fillRect(0,32+rowHeight*1-60,tft.width(), 30, BLACK);
+    showmsgXYVCenter(0, 32+rowHeight*1-margin, 1, &Orbitron_Medium_50, dtostrf(speed, 3, 2, spBf), WHITE, BLACK);
     
     //Refresh Time
-    /*char buffer[32], oldBuffer[32]={};
+    tft.fillRect(0,32+rowHeight*2-60,tft.width(), 60, BLACK);
+    //tft.fillRect(0,32+rowHeight*1-60,tft.width(), 30, BLACK);
+    showmsgXYVCenter(0, 32+rowHeight*2-margin, 1, &Orbitron_Medium_50, "22:22:56", WHITE, BLACK);
     
+    // Refresh cadence
+    char cadBuffer[10];
+    float divisor = millis()- lastMillisTFT;
+    Serial.print("Divisor: ");
+    Serial.println(divisor);
+    int cadence = 0;
+    if (0 != divisor) {
+      cadence = ((countCadence /  (divisor/1000))*60)/8;
+      countCadence = 0;
+    }
+    
+    sprintf(cadBuffer, "%i", (int)cadence);
+    tft.fillRect(0,32+rowHeight*3-60,tft.width(), 60, BLACK
+    
+    );
+    showmsgXYVCenter(0, 32+rowHeight*3-margin, 1, &Orbitron_Medium_50, cadBuffer, WHITE, BLACK);
+    
+    /*char buffer[32], oldBuffer[32]={};
     sprintf(buffer, "%02d:%02d:%02d ", timegps.hour(), timegps.minute(), timegps.second());
     showmsgXYVCenter(0, 87, 1, &FreeBigFont, buffer);
     //Refresh Speed
@@ -547,6 +571,7 @@ void refreshLiveData()
     delay(2000);
     sprintf(buffer, "%02d:%02d:%02d ", timegps.hour(), timegps.minute(), timegps.second()+1);
     showmsgXYVCenter(0, 87, 1, &FreeBigFont, buffer);*/
+    lastMillisTFT = millis();
   }
 }
 

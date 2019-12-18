@@ -19,3 +19,4 @@
 //EN
 #define SPEED "SPEED"
 #define ACTIVITY_TIME "ACTIVITY TIME"
+#define CADENCE "CADENCE"
